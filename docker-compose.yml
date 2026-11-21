@@ -1,0 +1,91 @@
+# Sistema completo e distribuído.
+# Uso: cp .env.example .env && docker compose up --build
+# Acesso: http://localhost:8080
+#
+# Réplicas: ajuste AUTH_REPLICAS / CHAT_REPLICAS no .env ou use
+#   docker compose up -d --scale chat=4 && docker compose restart web
+
+x-ambiente-django: &ambiente-django
+  DJANGO_DEBUG: "False"
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?Defina DJANGO_SECRET_KEY no .env}
+  DJANGO_ALLOWED_HOSTS: "*"
+  JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?Defina JWT_SIGNING_KEY no .env}
+  DB_HOST: postgres
+  DB_PORT: "5432"
+  DB_USER: ${DB_USER:-chat}
+  DB_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD no .env}
+  AUTH_DB_NAME: auth_db
+  CHAT_DB_NAME: chat_db
+  REDIS_URL: redis://redis:6379/0
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-chat}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    # Acesso pelo DBeaver/pgAdmin na máquina: localhost:5433 (5433 para não conflitar com um PostgreSQL local)
+    ports:
+      - "${DB_PORT_HOST:-5433}:5432"
+    volumes:
+      - postgres_dados:/var/lib/postgresql/data
+      - ./deploy/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-chat}"]
+      interval: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      retries: 20
+
+  # Migrações rodam uma única vez, antes das réplicas subirem (evita corrida entre réplicas)
+  auth-migrate:
+    build: { context: ./auth_service, dockerfile: ../deploy/Dockerfile.auth }
+    image: chat-sd/auth
+    environment: *ambiente-django
+    command: python manage.py migrate --noinput
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  chat-migrate:
+    build: { context: ./chat_service, dockerfile: ../deploy/Dockerfile.chat }
+    image: chat-sd/chat
+    environment: *ambiente-django
+    command: python manage.py migrate --noinput
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  auth:
+    image: chat-sd/auth
+    environment: *ambiente-django
+    deploy:
+      replicas: ${AUTH_REPLICAS:-2}
+    restart: unless-stopped
+    depends_on:
+      auth-migrate: { condition: service_completed_successfully }
+
+  chat:
+    image: chat-sd/chat
+    environment: *ambiente-django
+    deploy:
+      replicas: ${CHAT_REPLICAS:-2}
+    restart: unless-stopped
+    depends_on:
+      chat-migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+
+  web:
+    build: { context: ., dockerfile: deploy/Dockerfile.web }
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    restart: unless-stopped
+    depends_on:
+      - auth
+      - chat
+
+volumes:
+  postgres_dados:

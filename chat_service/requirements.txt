@@ -1,0 +1,10 @@
+Django==4.2.29
+djangorestframework==3.16.1
+djangorestframework-simplejwt==5.5.1
+django-cors-headers==4.9.0
+python-dotenv==1.0.1
+psycopg[binary]==3.2.13
+# Tempo real: WebSocket (Channels) + servidor ASGI (Daphne) + Redis para compartilhar eventos entre réplicas
+channels==4.2.0
+channels-redis==4.2.1
+daphne==4.1.2

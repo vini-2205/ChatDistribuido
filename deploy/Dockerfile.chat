@@ -1,0 +1,9 @@
+# Serviço de Mensagens/Chat (ASGI com Daphne: HTTP + WebSocket). Contexto de build: chat_service/
+FROM python:3.12-slim-bookworm
+ENV PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["daphne", "-b", "0.0.0.0", "-p", "8000", "config.asgi:application"]

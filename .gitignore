@@ -1,0 +1,18 @@
+# Configurações locais (senhas e chaves)
+.env
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+db.sqlite3
+staticfiles/
+.coverage
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+
+# Sistema
+.DS_Store
