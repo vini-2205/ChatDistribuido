@@ -6,7 +6,8 @@ from channels.layers import get_channel_layer
 from django.db import transaction
 from django.db.models import Count, Q
 
-from .models import Conversa, Mensagem, Participante
+from .models import Conversa, Participante
+from . import mongo
 
 TAMANHO_MAXIMO_MENSAGEM = 4000
 
@@ -72,31 +73,37 @@ def criar_conversa(criador, tipo, participantes, nome=''):
 
 
 def salvar_mensagem(conversa_id, remetente, conteudo):
-    conteudo = (conteudo or '').strip()
+    conteudo = (conteudo or "").strip()
+
     if not conteudo:
-        raise ErroChat('Mensagem vazia.')
+        raise ErroChat("Mensagem vazia.")
+
     if len(conteudo) > TAMANHO_MAXIMO_MENSAGEM:
-        raise ErroChat('Mensagem muito longa.')
-    conversa = obter_conversa(conversa_id, remetente['id'])
-    mensagem = Mensagem.objects.create(
-        conversa=conversa,
-        remetente_id=remetente['id'],
-        remetente_username=remetente['username'],
-        conteudo=conteudo,
+        raise ErroChat("Mensagem muito longa.")
+
+    conversa = obter_conversa(
+        conversa_id,
+        remetente["id"]
     )
-    destinatarios = list(conversa.participantes.values_list('usuario_id', flat=True))
+
+    mensagem = mongo.salvar(
+        conversa.id,
+        remetente,
+        conteudo
+    )
+
+    destinatarios = list(
+        conversa.participantes.values_list(
+            "usuario_id",
+            flat=True
+        )
+    )
+
     return mensagem, destinatarios
 
 
 def mensagem_para_dict(m):
-    return {
-        'id': m.id,
-        'conversa_id': m.conversa_id,
-        'remetente_id': m.remetente_id,
-        'remetente_username': m.remetente_username,
-        'conteudo': m.conteudo,
-        'enviada_em': m.enviada_em.isoformat(),
-    }
+    return mongo.serializar(m)
 
 
 async def publicar_async(usuarios_ids, evento):

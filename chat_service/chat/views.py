@@ -5,7 +5,10 @@ from rest_framework.response import Response
 
 from . import servico
 from .middleware import NOME_REPLICA
-from .serializers import ConversaSerializer, MensagemSerializer, NovaConversaSerializer
+from .serializers import ConversaSerializer, NovaConversaSerializer
+
+from . import mongo
+from bson.errors import InvalidId
 
 TAMANHO_PAGINA = 50
 
@@ -40,32 +43,61 @@ def conversas(request):
     return Response(dados, status=status.HTTP_201_CREATED if criada else status.HTTP_200_OK)
 
 
-@api_view(['GET', 'POST'])
+@api_view(["GET", "POST"])
 def mensagens(request, conversa_id):
-    """
-    GET  /api/chat/conversas/<id>/mensagens/?antes=<id_mensagem> — histórico paginado.
-    POST /api/chat/conversas/<id>/mensagens/ — envia mensagem pela API (alternativa ao WebSocket).
-    """
     usuario = usuario_logado(request)
-    if request.method == 'GET':
+
+    if request.method == "GET":
         try:
-            conversa = servico.obter_conversa(conversa_id, usuario['id'])
+            conversa = servico.obter_conversa(
+                conversa_id,
+                usuario["id"]
+            )
         except servico.ErroChat as e:
-            return Response({'detail': str(e)}, status=status.HTTP_404_NOT_FOUND)
-        qs = conversa.mensagens.all()
-        antes = request.query_params.get('antes')
-        if antes:
-            qs = qs.filter(id__lt=antes)
-        pagina = list(qs.order_by('-enviada_em', '-id')[:TAMANHO_PAGINA])[::-1]
-        return Response(MensagemSerializer(pagina, many=True).data)
+            return Response(
+                {"detail": str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        antes = request.query_params.get("antes")
+
+        try:
+            pagina = mongo.buscar_mensagens(
+                conversa_id=conversa.id,
+                antes=antes,
+                limite=TAMANHO_PAGINA
+            )
+        except InvalidId:
+            return Response(
+                {"detail": "Identificador inválido."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return Response(pagina)
 
     try:
-        mensagem, destinatarios = servico.salvar_mensagem(conversa_id, usuario, request.data.get('conteudo'))
+        mensagem, destinatarios = servico.salvar_mensagem(
+            conversa_id,
+            usuario,
+            request.data.get("conteudo")
+        )
     except servico.ErroChat as e:
-        return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
     dados = servico.mensagem_para_dict(mensagem)
-    servico.publicar(destinatarios, {'tipo': 'mensagem', 'mensagem': dados})
-    return Response(dados, status=status.HTTP_201_CREATED)
+
+    servico.publicar(
+        destinatarios,
+        {"tipo": "mensagem", "mensagem": dados}
+    )
+
+    return Response(
+        dados,
+        status=status.HTTP_201_CREATED
+    )
 
 
 @api_view(['GET'])

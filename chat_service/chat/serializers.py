@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from .models import Conversa, Mensagem, Participante
 
+from . import mongo
 
 class ParticipanteSerializer(serializers.ModelSerializer):
     class Meta:
@@ -24,8 +25,7 @@ class ConversaSerializer(serializers.ModelSerializer):
         fields = ['id', 'tipo', 'nome', 'criado_por_id', 'criada_em', 'participantes', 'ultima_mensagem']
 
     def get_ultima_mensagem(self, obj):
-        m = obj.mensagens.order_by('-enviada_em', '-id').first()
-        return MensagemSerializer(m).data if m else None
+        return mongo.ultima_mensagem(obj.id)
 
 
 class NovoParticipanteSerializer(serializers.Serializer):

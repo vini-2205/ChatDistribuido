@@ -42,6 +42,20 @@ services:
       interval: 3s
       retries: 20
 
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongo_dados:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   # Migrações rodam uma única vez, antes das réplicas subirem (evita corrida entre réplicas)
   auth-migrate:
     build: { context: ./auth_service, dockerfile: ../deploy/Dockerfile.auth }
@@ -70,13 +84,17 @@ services:
 
   chat:
     image: chat-sd/chat
-    environment: *ambiente-django
+    environment:
+      <<: *ambiente-django
+      MONGO_URL: ${MONGO_URL}
+      MONGO_DB_NAME: ${MONGO_DB_NAME:-chat_messages}
     deploy:
       replicas: ${CHAT_REPLICAS:-2}
     restart: unless-stopped
     depends_on:
       chat-migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      mongo: { condition: service_healthy }
 
   web:
     build: { context: ., dockerfile: deploy/Dockerfile.web }
@@ -89,3 +107,4 @@ services:
 
 volumes:
   postgres_dados:
+  mongo_dados:
